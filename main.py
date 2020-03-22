@@ -37,7 +37,7 @@ data_options = pn.widgets.RadioButtonGroup(
     value='Total cases', sizing_mode='stretch_width',
 )
 time_options = pn.widgets.RadioButtonGroup(
-    options=['By date', 'By days since first case'],
+    options=['By date', 'By days since first report'],
     value='By date', sizing_mode='stretch_width',
 )
 location_options = pn.widgets.MultiSelect(
@@ -69,7 +69,7 @@ def layout(average_number_of_people_exposed_daily, probability_of_infection,
     else:
         time_col = 'days'
         hover_cols = ['date']
-        xlabel = f'Days since first case'
+        xlabel = f'Days since first report'
 
     data_col = data_column.lower().replace(' ', '_')
     columns = ['days', 'date', 'location', data_col]
