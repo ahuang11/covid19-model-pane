@@ -65,9 +65,11 @@ def layout(average_number_of_people_exposed_daily, probability_of_infection,
     if time_column == 'By date':
         time_col = 'date'
         hover_cols = ['days']
+        xlabel = 'Date'
     else:
         time_col = 'days'
         hover_cols = ['date']
+        xlabel = f'Days since first case'
 
     data_col = data_column.lower().replace(' ', '_')
     columns = ['days', 'date', 'location', data_col]
@@ -100,8 +102,8 @@ def layout(average_number_of_people_exposed_daily, probability_of_infection,
         time_col, data_col, label='Model', logy=log_scale,
         hover_cols=hover_cols, **HVPLOT_KWDS
     ).opts(line_dash='dashed', line_width=5,
-           xlabel=f'Days since first case',
-           ylabel='Cases reported by WHO')
+           xlabel=xlabel,
+           ylabel='Confirmed Cases reported by WHO')
 
     overlay_lines = (model_line * location_line).opts(
         'Curve', toolbar='above')
