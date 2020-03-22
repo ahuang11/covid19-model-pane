@@ -103,7 +103,7 @@ def layout(average_number_of_people_exposed_daily, probability_of_infection,
         hover_cols=hover_cols, **HVPLOT_KWDS
     ).opts(line_dash='dashed', line_width=5,
            xlabel=xlabel,
-           ylabel='Confirmed Cases reported by WHO')
+           ylabel='Reports by WHO')
 
     overlay_lines = (model_line * location_line).opts(
         'Curve', toolbar='above')
