@@ -26,7 +26,8 @@ FOOTER = (
 full_df = pd.read_csv(DATA_URL)
 full_df['location'] = full_df['location'].str.replace("'", '`')
 num_days = int(full_df['location'].value_counts().max())
-locations_list = full_df['location'].unique().tolist()
+locations_list = sorted(full_df['location'].unique().tolist())
+locations_list.remove('World')
 start_date = pd.to_datetime(full_df['date'].min())
 full_df['date'] = pd.to_datetime(full_df['date'])
 
