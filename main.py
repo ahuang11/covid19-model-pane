@@ -8,16 +8,12 @@ from bokeh.models import HoverTool
 hv.renderer('bokeh').theme = 'caliber'
 pn.extension(backend='bokeh')
 
-DATA_URL = 'https://covid.ourworldindata.org/data/ecdc/total_cases.csv'
+DATA_URL = 'https://covid.ourworldindata.org/data/who/full_data.csv'
 DATA_TAG = f'<a href="{DATA_URL}">data</a>'
 YOUTUBE_TAG = '<a href="https://youtube.com/watch?v=Kas0tIxDvrg">video</a>'
-START_DATE = pd.to_datetime('2020-01-21')
 WORLD_POPULATION = 7794798739
-XLABEL = f'Days from {START_DATE:%Y-%m-%d}'
-YLABEL = 'Cases'
 HVPLOT_KWDS = dict(
-    xlabel=XLABEL, ylabel=YLABEL, hover_cols=['date'], responsive=True,
-    logy=True, xlim=(0, None), ylim=(1, None), grid=True,
+    responsive=True, ylim=(1, None), grid=True,
 )
 FOOTER = (
     f'Thanks to Our World in Data for providing the {DATA_TAG} and '
@@ -25,58 +21,101 @@ FOOTER = (
     f'inspiration & formula. Created primarily with numpy, pandas, panel, '
     f'holoviews, and bokeh in Python.')
 
-observed_df = pd.read_csv(DATA_URL)
-print(observed_df)
-num_days = len(observed_df)
-observed_df = (
-    observed_df
-    .reset_index()
-    .rename(columns={'index': 'days'})
-    .melt(['date', 'days'], var_name='location', value_name='cases')
-    .dropna()
+### Preprocess data
+
+full_df = pd.read_csv(DATA_URL)
+full_df['location'] = full_df['location'].str.replace("'", '`')
+num_days = int(full_df['location'].value_counts().max())
+locations_list = full_df['location'].unique().tolist()
+start_date = pd.to_datetime(full_df['date'].min())
+full_df['date'] = pd.to_datetime(full_df['date'])
+
+### Define widgets
+
+data_options = pn.widgets.RadioButtonGroup(
+    options=['Total cases', 'Total deaths', 'New deaths', 'New cases'],
+    value='Total cases', sizing_mode='stretch_width',
 )
-observed_df['location'] = observed_df['location'].str.replace("'", '`')
-worldwide_df = observed_df.query("location == 'Worldwide'")
-observed_df = observed_df.query("location != 'Worldwide'")
+time_options = pn.widgets.RadioButtonGroup(
+    options=['By date', 'By days since first case'],
+    value='By date', sizing_mode='stretch_width',
+)
 location_options = pn.widgets.MultiSelect(
-    options=observed_df['location'].unique().tolist(),
-    value=['United States', 'South Korea', 'China', 'Italy', 'Singapore'],
+    options=locations_list,
+    value=['United States', 'South Korea', 'Italy', 'Singapore'],
     sizing_mode='stretch_height'
 )
-worldwide_line = worldwide_df.hvplot.line(
-    'days', 'cases', label='Worldwide',
-    color='black', **HVPLOT_KWDS)
+log_toggle = pn.widgets.Toggle(name='Logarithmic Scale', value=True)
+world_toggle = pn.widgets.Toggle(name='Show World Total', value=True)
 
-@pn.interact(Average_number_of_people_exposed_daily=(0, 1000., 1, 5),
-             Probability_of_infection=(0, 0.1, 0.01, 0.03),
-             Number_of_days=(0, 720., 1, num_days),
-             Number_of_cases=(0, 1e5, 1., 1),
-             Locations=location_options)
-def layout(Average_number_of_people_exposed_daily, Probability_of_infection,
-           Number_of_days, Number_of_cases, Locations):
-    """
-    Average_number_of_people_exposed_daily
-    Probability_of_infection
-    Number_of_days
-    Number_of_cases
-    """
-    days = np.arange(Number_of_days)
-    Nd = (1 + Average_number_of_people_exposed_daily *
-          Probability_of_infection) ** days * Number_of_cases
-    model_df = pd.DataFrame({'cases': Nd}, index=days).rename_axis('days')
-    model_df['date'] = START_DATE - pd.to_timedelta(days, unit='D')
-    exceed_case = model_df['cases'] > WORLD_POPULATION
-    model_df.loc[exceed_case, 'cases'] = WORLD_POPULATION
-    model_line = model_df.hvplot.line(
-        'days', 'cases', label='Model', **HVPLOT_KWDS
-    ).opts(line_dash='dashed', line_width=5)
+### Define function
 
-    location_df = observed_df.loc[observed_df['location'].isin(Locations)]
+@pn.interact(average_number_of_people_exposed_daily=(0, 1000., 1, 5),
+             probability_of_infection=(0, 0.1, 0.001, 0.03),
+             number_of_days=(0, 720., 1, num_days),
+             number_of_cases=(0, 1e5, 1., 1),
+             data_column=data_options,
+             time_column=time_options,
+             log_scale=log_toggle,
+             show_world=world_toggle,
+             locations=location_options)
+def layout(average_number_of_people_exposed_daily, probability_of_infection,
+           number_of_days, number_of_cases, data_column, time_column,
+           log_scale, show_world, locations):
+    if time_column == 'By date':
+        time_col = 'date'
+        hover_cols = ['days']
+    else:
+        time_col = 'days'
+        hover_cols = ['date']
+
+    data_col = data_column.lower().replace(' ', '_')
+    columns = ['days', 'date', 'location', data_col]
+
+    days_df = full_df.fillna(0).reset_index()
+    days_df = days_df.loc[days_df[data_col] != 0]
+    days_df['days'] = 1
+    days_df['days'] = (
+        days_df.groupby(['index', 'location'])
+        .sum().groupby('location')['days'].cumsum()
+    ).values - 1
+
+    observed_df = days_df.loc[
+        days_df['location'] != 'World', columns
+    ]
+
+    location_df = observed_df.loc[observed_df['location'].isin(locations)]
     location_line = location_df.hvplot.line(
-        'days', 'cases', by='location', **HVPLOT_KWDS)
+        time_col, data_col, by='location',
+        hover_cols=hover_cols, **HVPLOT_KWDS)
 
-    overlay_lines = (model_line * location_line * worldwide_line).opts(
+    days = np.arange(number_of_days)
+    Nd = (1 + average_number_of_people_exposed_daily *
+          probability_of_infection) ** days * number_of_cases
+    model_df = pd.DataFrame({data_col: Nd}, index=days).rename_axis('days')
+    model_df['date'] = start_date + pd.to_timedelta(days, unit='D')
+    exceed_case = model_df[data_col] > WORLD_POPULATION
+    model_df.loc[exceed_case, data_col] = WORLD_POPULATION
+    model_line = model_df.hvplot.line(
+        time_col, data_col, label='Model', logy=log_scale,
+        hover_cols=hover_cols, **HVPLOT_KWDS
+    ).opts(line_dash='dashed', line_width=5,
+           xlabel=f'Days since first case',
+           ylabel='Cases reported by WHO')
+
+    overlay_lines = (model_line * location_line).opts(
         'Curve', toolbar='above')
+
+    if show_world:
+        world_df = days_df.loc[
+            days_df['location'] == 'World', columns
+        ]
+        world_line = world_df.hvplot.line(
+            time_col, data_col, label='World',
+            hover_cols=hover_cols,
+            color='black', **HVPLOT_KWDS)
+        overlay_lines *= world_line
+
     pane = pn.pane.HoloViews(overlay_lines, sizing_mode='stretch_both',
                              min_height=500)
     return overlay_lines
@@ -84,7 +123,7 @@ def layout(Average_number_of_people_exposed_daily, Probability_of_infection,
 widgets = pn.WidgetBox(layout[0], sizing_mode='stretch_height')
 plot = layout[1]
 for widget in widgets[0]:
-    widget.name = widget.name.replace('_', ' ')
+    widget.name = widget.name.replace('_', ' ').capitalize()
 plot.set_param(sizing_mode='stretch_both')
 view = pn.Row(widgets, plot, sizing_mode='stretch_both')
 footer_md = pn.pane.Markdown(
