@@ -8,7 +8,7 @@ from bokeh.models import HoverTool
 hv.renderer('bokeh').theme = 'caliber'
 pn.extension(backend='bokeh')
 
-DATA_URL = 'https://covid.ourworldindata.org/data/total_cases.csv'
+DATA_URL = 'https://covid.ourworldindata.org/data/ecdc/total_cases.csv'
 DATA_TAG = f'<a href="{DATA_URL}">data</a>'
 YOUTUBE_TAG = '<a href="https://youtube.com/watch?v=Kas0tIxDvrg">video</a>'
 START_DATE = pd.to_datetime('2020-01-21')
@@ -26,6 +26,7 @@ FOOTER = (
     f'holoviews, and bokeh in Python.')
 
 observed_df = pd.read_csv(DATA_URL)
+print(observed_df)
 num_days = len(observed_df)
 observed_df = (
     observed_df
