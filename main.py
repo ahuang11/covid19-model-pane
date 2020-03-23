@@ -64,7 +64,7 @@ local_df = pd.merge(
     process_local_df('total_cases'),
     process_local_df('total_deaths'),
     on=['location', 'date'],
-).sort_values(['location', 'date'])
+).sort_values(['location', 'date']).dropna()
 
 local_df = local_df.join(
     local_df.groupby('location')[['total_cases', 'total_deaths']].diff().rename(
