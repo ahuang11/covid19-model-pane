@@ -89,7 +89,7 @@ time_options = pn.widgets.RadioButtonGroup(
     options=['By date', 'By days'],
     value='By date', sizing_mode='stretch_width',
 )
-location_options = pn.widgets.MultiSelect(
+location_options = pn.widgets.MultiChoice(
     options=locations_list,
     value=['United States', 'South Korea', 'Italy', 'Illinois'],
     sizing_mode='stretch_height'
