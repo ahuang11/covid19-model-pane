@@ -38,7 +38,7 @@ data_options = pn.widgets.RadioButtonGroup(
     value='Total cases', sizing_mode='stretch_width',
 )
 time_options = pn.widgets.RadioButtonGroup(
-    options=['By date', 'By days since first report'],
+    options=['By date', 'By days'],
     value='By date', sizing_mode='stretch_width',
 )
 location_options = pn.widgets.MultiSelect(
@@ -55,14 +55,15 @@ world_toggle = pn.widgets.Toggle(name='Show World Total', value=True)
              probability_of_infection=(0, 0.1, 0.001, 0.03),
              number_of_days=(0, 720., 1, num_days),
              number_of_cases=(0, 1e5, 1., 1),
+             report_threshold=(0, 1000, 1, 1),
              data_column=data_options,
              time_column=time_options,
              log_scale=log_toggle,
              show_world=world_toggle,
              locations=location_options)
 def layout(average_number_of_people_exposed_daily, probability_of_infection,
-           number_of_days, number_of_cases, data_column, time_column,
-           log_scale, show_world, locations):
+           number_of_days, number_of_cases, report_threshold,
+           data_column, time_column, log_scale, show_world, locations):
     if time_column == 'By date':
         time_col = 'date'
         hover_cols = ['days']
@@ -70,13 +71,13 @@ def layout(average_number_of_people_exposed_daily, probability_of_infection,
     else:
         time_col = 'days'
         hover_cols = ['date']
-        xlabel = f'Days since first report'
+        xlabel = f'Days since {report_threshold} reports'
 
     data_col = data_column.lower().replace(' ', '_')
     columns = ['days', 'date', 'location', data_col]
 
     days_df = full_df.fillna(0).reset_index()
-    days_df = days_df.loc[days_df[data_col] != 0]
+    days_df = days_df.loc[days_df[data_col] >= report_threshold]
     days_df['days'] = 1
     days_df['days'] = (
         days_df.groupby(['index', 'location'])
