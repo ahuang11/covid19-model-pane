@@ -8,28 +8,76 @@ from bokeh.models import HoverTool
 hv.renderer('bokeh').theme = 'caliber'
 pn.extension(backend='bokeh')
 
-DATA_URL = 'https://covid.ourworldindata.org/data/who/full_data.csv'
-DATA_TAG = f'<a href="{DATA_URL}">data</a>'
+WORLD_DATA_URL = 'https://covid.ourworldindata.org/data/ecdc/full_data.csv'
+US_CASES_DATA_URL = (
+    'https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/'
+    'csse_covid_19_data/csse_covid_19_time_series/'
+    'time_series_19-covid-Confirmed.csv'
+)
+US_DEATHS_DATA_URL = (
+    'https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/'
+    'csse_covid_19_data/csse_covid_19_time_series/'
+    'time_series_19-covid-Deaths.csv'
+)
+DATA_TAG = (f'<a href="{WORLD_DATA_URL}">world full data</a>, '
+            f'<a href="{US_CASES_DATA_URL}">US cases data</a>, '
+            f'<a href="{US_DEATHS_DATA_URL}">US deaths data</a>')
+
 YOUTUBE_TAG = '<a href="https://youtube.com/watch?v=Kas0tIxDvrg">video</a>'
 WORLD_POPULATION = 7794798739
 HVPLOT_KWDS = dict(
     responsive=True, ylim=(1, None), grid=True,
 )
 FOOTER = (
-    f'Thanks to Our World in Data for providing the {DATA_TAG} and '
+    f'Thanks to Our World in Data and Johns Hopkins University Center for '
+    f'Systems Science and Engineering for providing the {DATA_TAG} and '
     f'3Blue1Brown\'s "Exponential growth and epidemics" {YOUTUBE_TAG} for the '
     f'inspiration & formula. Created primarily with numpy, pandas, panel, '
     f'holoviews, and bokeh in Python.')
 
+def process_us_df(kind):
+    if kind == 'total_cases':
+        url = US_CASES_DATA_URL
+    else:
+        url = US_DEATHS_DATA_URL
+    us_df = pd.read_csv(url)
+    us_df = us_df.loc[us_df['Country/Region'] == 'US'].drop(
+        columns=['Country/Region', 'Lat', 'Long']
+    ).melt(
+        'Province/State', var_name='date', value_name=kind
+    ).rename(columns={
+        'Province/State': 'location'
+    })
+    us_df['date'] = pd.to_datetime(us_df['date'])
+    return us_df
+
+
 ### Preprocess data
 
-full_df = pd.read_csv(DATA_URL)
-full_df['location'] = full_df['location'].str.replace("'", '`')
-num_days = int(full_df['location'].value_counts().max())
-locations_list = sorted(full_df['location'].unique().tolist())
+worldwide_df = pd.read_csv(WORLD_DATA_URL)
+worldwide_df['location'] = worldwide_df['location'].str.replace("'", '`')
+num_days = int(worldwide_df['location'].value_counts().max())
+start_date = pd.to_datetime(worldwide_df['date'].min())
+worldwide_df['date'] = pd.to_datetime(worldwide_df['date'])
+
+us_df = pd.merge(
+    process_us_df('total_cases'),
+    process_us_df('total_deaths'),
+    on=['location', 'date'],
+).sort_values(['location', 'date'])
+
+us_df = us_df.join(
+    us_df.groupby('location')[['total_cases', 'total_deaths']].diff().rename(
+    columns={'total_cases': 'new_cases', 'total_deaths': 'new_deaths'}).fillna(0)
+)
+
+full_df = pd.concat([worldwide_df, us_df], sort=False)
+
+locations_list = (
+    sorted(worldwide_df['location'].unique().tolist()) +
+    sorted(us_df['location'].unique().tolist())
+)
 locations_list.remove('World')
-start_date = pd.to_datetime(full_df['date'].min())
-full_df['date'] = pd.to_datetime(full_df['date'])
 
 ### Define widgets
 
@@ -43,7 +91,7 @@ time_options = pn.widgets.RadioButtonGroup(
 )
 location_options = pn.widgets.MultiSelect(
     options=locations_list,
-    value=['United States', 'South Korea', 'Italy', 'Singapore'],
+    value=['United States', 'South Korea', 'Italy', 'Illinois'],
     sizing_mode='stretch_height'
 )
 log_toggle = pn.widgets.Toggle(name='Logarithmic Scale', value=True)
@@ -76,13 +124,20 @@ def layout(average_number_of_people_exposed_daily, probability_of_infection,
     data_col = data_column.lower().replace(' ', '_')
     columns = ['days', 'date', 'location', data_col]
 
-    days_df = full_df.fillna(0).reset_index()
+    days_df = full_df.fillna(0)
     days_df = days_df.loc[days_df[data_col] >= report_threshold]
+
     days_df['days'] = 1
-    days_df['days'] = (
-        days_df.groupby(['index', 'location'])
-        .sum().groupby('location')['days'].cumsum()
-    ).values - 1
+    days_df = (
+        days_df
+        .drop(columns='days')
+        .set_index(['location', 'date'])
+        .join(
+            days_df.groupby(['location', 'date']).sum()
+            .groupby('location')['days'].cumsum()
+        )
+    ).reset_index()
+    days_df['days'] -= 1
 
     observed_df = days_df.loc[
         days_df['location'] != 'World', columns
@@ -105,7 +160,7 @@ def layout(average_number_of_people_exposed_daily, probability_of_infection,
         hover_cols=hover_cols, **HVPLOT_KWDS
     ).opts(line_dash='dashed', line_width=5,
            xlabel=xlabel,
-           ylabel='Reports by WHO')
+           ylabel='Reports by ECDC & JHU CSSE')
 
     overlay_lines = (model_line * location_line).opts(
         'Curve', toolbar='above')
