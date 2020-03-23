@@ -35,21 +35,21 @@ FOOTER = (
     f'inspiration & formula. Created primarily with numpy, pandas, panel, '
     f'holoviews, and bokeh in Python.')
 
-def process_us_df(kind):
+def process_local_df(kind):
     if kind == 'total_cases':
         url = US_CASES_DATA_URL
     else:
         url = US_DEATHS_DATA_URL
-    us_df = pd.read_csv(url)
-    us_df = us_df.loc[us_df['Country/Region'] == 'US'].drop(
+    local_df = pd.read_csv(url)
+    local_df = local_df.drop(
         columns=['Country/Region', 'Lat', 'Long']
     ).melt(
         'Province/State', var_name='date', value_name=kind
     ).rename(columns={
         'Province/State': 'location'
     })
-    us_df['date'] = pd.to_datetime(us_df['date'])
-    return us_df
+    local_df['date'] = pd.to_datetime(local_df['date'])
+    return local_df
 
 
 ### Preprocess data
@@ -60,22 +60,22 @@ num_days = int(worldwide_df['location'].value_counts().max())
 start_date = pd.to_datetime(worldwide_df['date'].min())
 worldwide_df['date'] = pd.to_datetime(worldwide_df['date'])
 
-us_df = pd.merge(
-    process_us_df('total_cases'),
-    process_us_df('total_deaths'),
+local_df = pd.merge(
+    process_local_df('total_cases'),
+    process_local_df('total_deaths'),
     on=['location', 'date'],
 ).sort_values(['location', 'date'])
 
-us_df = us_df.join(
-    us_df.groupby('location')[['total_cases', 'total_deaths']].diff().rename(
+local_df = local_df.join(
+    local_df.groupby('location')[['total_cases', 'total_deaths']].diff().rename(
     columns={'total_cases': 'new_cases', 'total_deaths': 'new_deaths'}).fillna(0)
 )
 
-full_df = pd.concat([worldwide_df, us_df], sort=False)
+full_df = pd.concat([worldwide_df, local_df], sort=False)
 
 locations_list = (
     sorted(worldwide_df['location'].unique().tolist()) +
-    sorted(us_df['location'].unique().tolist())
+    sorted(local_df['location'].unique().tolist())
 )
 locations_list.remove('World')
 
