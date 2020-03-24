@@ -67,8 +67,10 @@ local_df = pd.merge(
 ).sort_values(['location', 'date']).dropna()
 
 local_df = local_df.join(
-    local_df.groupby('location')[['total_cases', 'total_deaths']].diff().rename(
-    columns={'total_cases': 'new_cases', 'total_deaths': 'new_deaths'}).fillna(0)
+    local_df.groupby('location')[['total_cases', 'total_deaths']].diff()
+    .rename(columns={'total_cases': 'new_cases',
+                     'total_deaths': 'new_deaths'})
+    .fillna(0)
 )
 
 full_df = pd.concat([worldwide_df, local_df], sort=False)
@@ -153,6 +155,8 @@ def layout(average_number_of_people_exposed_daily, probability_of_infection,
           probability_of_infection) ** days * number_of_cases
     model_df = pd.DataFrame({data_col: Nd}, index=days).rename_axis('days')
     model_df['date'] = start_date + pd.to_timedelta(days, unit='D')
+    model_df = model_df.loc[model_df[data_col] >= report_threshold]
+    model_df['days'] = range(len(model_df))
     exceed_case = model_df[data_col] > WORLD_POPULATION
     model_df.loc[exceed_case, data_col] = WORLD_POPULATION
     model_line = model_df.hvplot.line(
