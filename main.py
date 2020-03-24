@@ -52,6 +52,17 @@ def process_local_df(kind):
     return local_df
 
 
+def create_pseudo_df(data_col, values, days, start_date, threshold_of_reports):
+    pseudo_df = pd.DataFrame({data_col: values}, index=days)
+    pseudo_df = pseudo_df.rename_axis('days')
+    pseudo_df['date'] = start_date + pd.to_timedelta(days, unit='D')
+    pseudo_df = pseudo_df.loc[pseudo_df[data_col] >= threshold_of_reports]
+    pseudo_df['days'] = range(len(pseudo_df))
+    exceed_case = pseudo_df[data_col] > WORLD_POPULATION
+    pseudo_df.loc[exceed_case, data_col] = WORLD_POPULATION
+    return pseudo_df
+
+
 ### Preprocess data
 
 worldwide_df = pd.read_csv(WORLD_DATA_URL)
@@ -105,14 +116,15 @@ world_toggle = pn.widgets.Toggle(name='Show World Total', value=True)
              probability_of_infection=(0, 0.1, 0.001, 0.03),
              number_of_days=(0, 720., 1, num_days),
              number_of_cases=(0, 1e5, 1., 1),
-             report_threshold=(0, 1000, 1, 1),
+             daily_percent=(0, 1, 0.01, 0.33),
+             threshold_of_reports=(0, 1000, 1, 1),
              data_column=data_options,
              time_column=time_options,
              log_scale=log_toggle,
              show_world=world_toggle,
              locations=location_options)
 def layout(average_number_of_people_exposed_daily, probability_of_infection,
-           number_of_days, number_of_cases, report_threshold,
+           number_of_days, number_of_cases, daily_percent, threshold_of_reports,
            data_column, time_column, log_scale, show_world, locations):
     if time_column == 'By date':
         time_col = 'date'
@@ -121,13 +133,13 @@ def layout(average_number_of_people_exposed_daily, probability_of_infection,
     else:
         time_col = 'days'
         hover_cols = ['date']
-        xlabel = f'Days since {report_threshold} reports'
+        xlabel = f'Days since {threshold_of_reports} reports'
 
     data_col = data_column.lower().replace(' ', '_')
     columns = ['days', 'date', 'location', data_col]
 
     days_df = full_df.fillna(0)
-    days_df = days_df.loc[days_df[data_col] >= report_threshold]
+    days_df = days_df.loc[days_df[data_col] >= threshold_of_reports]
 
     days_df['days'] = 1
     days_df = (
@@ -151,22 +163,28 @@ def layout(average_number_of_people_exposed_daily, probability_of_infection,
         hover_cols=hover_cols, **HVPLOT_KWDS)
 
     days = np.arange(number_of_days)
-    Nd = (1 + average_number_of_people_exposed_daily *
-          probability_of_infection) ** days * number_of_cases
-    model_df = pd.DataFrame({data_col: Nd}, index=days).rename_axis('days')
-    model_df['date'] = start_date + pd.to_timedelta(days, unit='D')
-    model_df = model_df.loc[model_df[data_col] >= report_threshold]
-    model_df['days'] = range(len(model_df))
-    exceed_case = model_df[data_col] > WORLD_POPULATION
-    model_df.loc[exceed_case, data_col] = WORLD_POPULATION
+    model_values = (
+        1 + average_number_of_people_exposed_daily *
+        probability_of_infection) ** days * number_of_cases
+    model_df = create_pseudo_df(
+        data_col, model_values, days, start_date, threshold_of_reports)
     model_line = model_df.hvplot.line(
         time_col, data_col, label='Model', logy=log_scale,
         hover_cols=hover_cols, **HVPLOT_KWDS
-    ).opts(line_dash='dashed', line_width=5,
-           xlabel=xlabel,
-           ylabel='Reports by ECDC & JHU CSSE')
+    ).opts(line_dash='dotted', line_width=3, color='brown',
+           xlabel=xlabel, ylabel='Reports by ECDC & JHU CSSE')
 
-    overlay_lines = (model_line * location_line).opts(
+    reference_values = [number_of_cases]
+    for i in range(number_of_days - 1):
+        reference_values.append(reference_values[-1] * (1 + daily_percent))
+    reference_df = create_pseudo_df(
+        data_col, reference_values, days, start_date, threshold_of_reports)
+    reference_line = reference_df.hvplot.line(
+        time_col, data_col, label='Reference', logy=log_scale,
+        hover_cols=hover_cols, **HVPLOT_KWDS
+    ).opts(line_dash='dashed', line_width=2, color='gray')
+
+    overlay_lines = (model_line * reference_line * location_line).opts(
         'Curve', toolbar='above')
 
     if show_world:
